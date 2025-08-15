@@ -1,0 +1,39 @@
+Use Case: Viral and Fake News Data Lineage Tracking
+Objective: Track the lifecycle of social media posts or news articles to understand their origin, transformations (like edits or re-shares), propagation paths, and engagement metrics that contribute to virality or misinformation.
+
+Entities to Model:
+
+Post/Article: The original social media content piece or news article.
+
+User/Account: Social media users or accounts sharing or interacting.
+
+Engagement Metrics: Likes, shares, comments, impressions, etc.
+
+Propagation Events: Actions like shares, retweets, replies, quotes.
+
+Verification/Fact-Check Status: Whether the content has been flagged or verified.
+
+Source/Platform: Origin platform or data source.
+
+Relationships:
+
+User creates Post.
+
+User shares/retweets Post (linking propagation).
+
+Post modifies/quotes another Post (transformation).
+
+Post flagged/verified by Fact-Check entity.
+
+Engagement metrics associated with Post.
+
+Example of Tracking Flow:
+A news article originates on a website (Source).
+
+It is shared first by a user on Twitter (User creates Post).
+
+Other users retweet, comment, or quote it (Propagation Events).
+
+Some versions of the post are edited or accompanied by misinformation tags (Transformations, Fact-Check).
+
+Engagement metrics update continuously to reflect virality levels.
