@@ -22,9 +22,9 @@ st.markdown(
 Enter a natural language question to explore data lineage, viral posts, or fact-check information.
 
 Examples:
-- Show me the most viral posts this week.
-- provide top 5 posts with more likes this week.
-- Who shared the COVID variant news?
+- Find posts about sustainable fashion shared on Instagram.
+- Show me the top 5 most shared posts across all platforms.
+- Find users who shared posts flagged as false news.
 """
 )
 

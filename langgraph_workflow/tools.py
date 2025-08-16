@@ -48,25 +48,26 @@ def execute_cypher(query: str) -> str:
         logger.error(f"Unexpected error during Cypher query execution: {e}")
         return f"Unexpected error: {str(e)}"
 
+
 def extract_cypher_query(text: str) -> str:
     """
     Extracts the Cypher query from the LLaMA output text, assuming it starts with a Cypher keyword like MATCH.
     """
     import re
+
     # Common Cypher keywords that can start a query
     keywords = ["MATCH", "WITH", "CREATE", "MERGE", "OPTIONAL MATCH", "UNWIND"]
-    
+
     # Find the earliest occurrence of one of the keywords ignoring case
-    pattern = re.compile(
-        r"(" + "|".join(keywords) + r")", re.IGNORECASE
-    )
+    pattern = re.compile(r"(" + "|".join(keywords) + r")", re.IGNORECASE)
     match = pattern.search(text)
     if match:
         # Return text starting at the first matched keyword
-        return text[match.start():].strip()
+        return text[match.start() :].strip()
     else:
         # If no keyword found, return original text (fallback)
         return text.strip()
+
 
 @tool
 def call_llama(prompt: str) -> str:

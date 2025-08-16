@@ -2,6 +2,8 @@ import logging
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph_workflow.tools import call_llama, execute_cypher
+from datetime import datetime, timedelta
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -14,107 +16,8 @@ class GraphState(TypedDict):
     summary_result: str  # Add this new key for summary output
 
 
-# def build_llama_prompt_node(state: dict) -> dict:
-#     """
-#     Build prompt string for LLaMA from user query including graph schema to improve Cypher generation.
-#     This prompt instructs the model to:
-#     - identify natural language time expressions (e.g. today, this week, this month, last year),
-#     - convert these to dynamic Neo4j datetime() and duration() based filters,
-#     - generate Cypher queries using the provided schema,
-#     - avoid fixed or static ISO date strings when relative dates are mentioned,
-#     - only output the Cypher query without explanations.
-#     """
-#     template = """
-#         You are a Cypher query generator assistant. Given a natural language question about social media viral posts and fact-check lineage, you will produce a Cypher query compatible with Neo4j. All datetime fields must be formatted using Neo4j's dynamic datetime() and duration() functions for relative times, or ISO 8601 strings for explicit dates.
-
-#         Database schema:
-
-#         Nodes:
-#         - Post: {{id (string), content (string), shares (integer), platform (string), timestamp (datetime)}}
-#         - FactCheck: {{status (string), comments (string)}}
-#         - User: {{id (string), name (string)}}
-
-#         Relationships:
-#         - (p:Post)-[:VERIFIED_BY]->(f:FactCheck)
-#         - (u:User)-[:SHARED]->(p:Post)
-
-#         Instructions:
-
-#         - Identify relative or absolute time expressions in the user query such as:
-#         "today", "yesterday", "this week", "this month", "this year", "last year", "last month",
-#         "after <date>", "before <date>", "past <N> days/months/years", etc.
-#         - For **relative** time expressions, use dynamic Neo4j datetime functions:
-#         - e.g., this week → compute start of current week dynamically
-#         - this month → first day of current month
-#         - today → midnight today
-#         - last year → January 1 to December 31 of previous year
-#         - Use Neo4j's `datetime()` and `duration()` functions and datetime arithmetic accordingly.
-#         - For **explicit dates**, convert to ISO 8601 format strings inside `datetime("...")`.
-#         - Avoid hardcoding fixed dates for relative expressions; queries should always compute dates at runtime.
-#         - Include other filters (platform, shares, verified status) as per the question.
-#         - Return only the Cypher query without any explanations or additional text.
-
-#         Examples:
-
-#         Q: Show me the most viral posts on Twitter  
-#         A: MATCH (p:Post) WHERE p.shares > 100 AND p.platform = 'Twitter' RETURN p.id, p.content, p.shares ORDER BY p.shares DESC LIMIT 5
-
-#         Q: Find posts verified as false news  
-#         A: MATCH (p:Post)-[:VERIFIED_BY]->(f:FactCheck {{status: "False"}}) RETURN p.id, p.content, f.comments LIMIT 5
-
-#         Q: Show me posts from today on Facebook sorted by shares  
-#         A: WITH datetime() AS now
-#         WITH datetime({ year: now.year, month: now.month, day: now.day }) AS startToday
-#         MATCH (p:Post)
-#         WHERE p.timestamp >= startToday AND p.platform = 'Facebook'
-#         RETURN p.id, p.content, p.shares, p.timestamp
-#         ORDER BY p.shares DESC
-#         LIMIT 5
 
 
-
-#         Q: Show posts from this week with more than 50 shares  
-#         A: WITH datetime() AS now
-#         WITH datetime({ year: now.year, month: now.month, day: now.day }) - duration({ days: CASE WHEN apoc.date.format(toInteger(toString(now.epochMillis / 1000)), 's', 'e') = 1 THEN 0 ELSE apoc.date.format(toInteger(toString(now.epochMillis / 1000)), 's', 'e') - 1 END }) AS startOfWeek
-#         MATCH (p:Post)
-#         WHERE p.timestamp >= startOfWeek AND p.shares > 50
-#         RETURN p.id, p.content, p.shares, p.timestamp
-#         ORDER BY p.shares DESC
-#         LIMIT 5
-
-
-
-#         Q: Find posts shared last year flagged as false news  
-#         A: WITH datetime() AS now
-#         WITH datetime({ year: now.year - 1, month: 1, day: 1 }) AS startLastYear,
-#         datetime({ year: now.year - 1, month: 12, day: 31, hour: 23, minute: 59, second: 59 }) AS endLastYear
-#         MATCH (p:Post)-[:VERIFIED_BY]->(f:FactCheck {{status: "False"}})
-#         WHERE p.timestamp >= startLastYear AND p.timestamp <= endLastYear
-#         RETURN p.id, p.content, f.comments
-#         LIMIT 5
-
-
-#         Q: Show posts shared after July 1, 2023  
-#         A:MATCH (p:Post)
-#         WHERE p.timestamp > datetime("2023-07-01T00:00:00Z")
-#         RETURN p.id, p.content, p.timestamp
-#         ORDER BY p.timestamp DESC
-#         LIMIT 5
-
-
-#         ---
-
-#         Now, generate a Cypher query for the following question:  
-        
-#         Q: {question} 
-#         A:
-#         """
-#     prompt = template.format(question=state["query"])
-#     print(prompt)
-#     return {"llama_prompt": prompt}
-
-from datetime import datetime, timedelta
-import re
 
 def build_llama_prompt_node(state: GraphState) -> dict:
     """
@@ -139,7 +42,9 @@ def build_llama_prompt_node(state: GraphState) -> dict:
         today = datetime.utcnow()
         start_of_week = today - timedelta(days=today.weekday())  # Monday
         start_of_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        start_of_year = today.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        start_of_year = today.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
 
         if "this week" in text:
             res["start_of_week"] = start_of_week.isoformat()
@@ -158,11 +63,17 @@ def build_llama_prompt_node(state: GraphState) -> dict:
     # Prepare date constraints in Cypher based on detected date parameters
     date_clauses = []
     if "start_of_week" in date_params:
-        date_clauses.append(f"p.timestamp >= datetime('{date_params['start_of_week']}')")
+        date_clauses.append(
+            f"p.timestamp >= datetime('{date_params['start_of_week']}')"
+        )
     if "start_of_month" in date_params:
-        date_clauses.append(f"p.timestamp >= datetime('{date_params['start_of_month']}')")
+        date_clauses.append(
+            f"p.timestamp >= datetime('{date_params['start_of_month']}')"
+        )
     if "start_of_year" in date_params:
-        date_clauses.append(f"p.timestamp >= datetime('{date_params['start_of_year']}')")
+        date_clauses.append(
+            f"p.timestamp >= datetime('{date_params['start_of_year']}')"
+        )
 
     # Join multiple date clauses with OR if more than one are present (you can customize)
     if date_clauses:
@@ -172,62 +83,67 @@ def build_llama_prompt_node(state: GraphState) -> dict:
 
     # Enhanced prompt template with instructions and schema
     template = f"""
-You are a Cypher query generation assistant.
+        You are a Cypher query generation assistant.
 
-Given a user's natural language question about social media viral posts and fact-check lineage,
-your task is to generate a **valid Neo4j Cypher query only** — do NOT include explanations, comments, or any other text.
+        Given a user's natural language question about social media viral posts and fact-check lineage,
+        your task is to generate a **valid Neo4j Cypher query only** — do NOT include explanations, comments, or any other text.
 
----
+        ---
 
-**Important Instructions:**
-- Only output the Cypher query.
-- Use the graph schema below.
-- Use explicit datetime literals in ISO 8601 format like: datetime('2023-08-10T00:00:00')
-- For natural language dates like 'this week', 'this month', 'this year', filter posts by timestamps accordingly in the query.
-- Use the following date filters where applicable in your query:
-  {date_filter_clause if date_filter_clause else 'No date filters requested.'}
-- Avoid any Cypher commands that modify or delete data such as DROP, DELETE, REMOVE.
-- Prioritize read-only queries (using MATCH, RETURN, OPTIONAL MATCH, WHERE).
-- Return relevant fields only, e.g., p.id, p.content, p.shares, p.timestamp, user/id etc.
-- Limit results to a reasonable number (e.g., LIMIT 5 or 10) when applicable.
+        **Important Instructions:**
+        - Only output the Cypher query.
+        - Use the graph schema below.
+        - Use explicit datetime literals in ISO 8601 format like: datetime('2023-08-10T00:00:00')
+        - For natural language dates like 'this week', 'this month', 'this year', filter posts by timestamps accordingly in the query.
+        - Use the following date filters where applicable in your query:
+        {date_filter_clause if date_filter_clause else 'No date filters requested.'}
+        - Avoid any Cypher commands that modify or delete data such as DROP, DELETE, REMOVE.
+        - Prioritize read-only queries (using MATCH, RETURN, OPTIONAL MATCH, WHERE).
+        - Return relevant fields only, e.g., p.id, p.content, p.shares, p.timestamp, user/id etc.
+        - Limit results to a reasonable number (e.g., LIMIT 5 or 10) when applicable.
 
----
+        ---
 
-**Graph Database Schema:**
+        **Graph Database Schema:**
 
-Nodes:
-- Post: {{id (string), content (string), shares (integer), platform (string), timestamp (datetime)}}
-- FactCheck: {{status (string), comments (string)}}
-- User: {{id (string), name (string)}}
+        Nodes:
 
-Relationships:
-- (p:Post)-[:VERIFIED_BY]->(f:FactCheck)
-- (u:User)-[:SHARED]->(p:Post)
+        User: {{id (string), name (string), username (string), email (string), followers (integer), account_created (date), verified (boolean), location (string)}}
 
----
+        Post: {{id (string), content (string), likes (integer), shares (integer), comments (integer), platform (string), timestamp (datetime), author_id (string), tags (list of strings)}}
 
-**Examples**
+        FactCheck: {{id (string), status (string), comments (string)}}
 
-Q: Show me the most viral posts on Twitter this week
-A: MATCH (p:Post) WHERE p.shares > 100 AND p.platform = 'Twitter' AND p.timestamp >= datetime('{date_params.get('start_of_week', '2023-01-01T00:00:00')}') RETURN p.id, p.content, p.shares, p.timestamp ORDER BY p.shares DESC LIMIT 5
+        Relationships:
 
-Q: Find posts verified as false news this month
-A: MATCH (p:Post)-[:VERIFIED_BY]->(f:FactCheck {{status: "False"}}) WHERE p.timestamp >= datetime('{date_params.get('start_of_month', '2023-01-01T00:00:00')}') RETURN p.id, p.content, f.comments LIMIT 5
+        (u:User)-[:CREATED]->(p:Post)
 
-Q: Who shared the COVID variant news?
-A: MATCH (u:User)-[:SHARED]->(p:Post) WHERE toLower(p.content) CONTAINS 'covid variant' RETURN u.id, u.name, p.content, p.timestamp LIMIT 5
+        (p:Post)-[:VERIFIED_BY]->(f:FactCheck)
 
----
+        (u:User)-[:SHARED]->(p:Post)
 
-Now, generate a Cypher query for the following user question.
-Remember: Output only the Cypher query.
+        Examples
 
-Q: {state['query']}
-A:
-"""
+        Q: Show me the most viral posts on Twitter this week
+        A: MATCH (p:Post) WHERE p.shares > 100 AND p.platform = 'Twitter' AND p.timestamp >= datetime('{date_params.get("start_of_week", "2023-01-01T00:00:00")}') RETURN p.id, p.content, p.shares, p.timestamp ORDER BY p.shares DESC LIMIT 5
+
+        Q: Find posts verified as false news this month
+        A: MATCH (p:Post)-[:VERIFIED_BY]->(f:FactCheck {{status: "False"}}) WHERE p.timestamp >= datetime('{date_params.get("start_of_month", "2023-01-01T00:00:00")}') RETURN p.id, p.content, f.comments LIMIT 5
+
+        Q: Who shared the COVID variant news?
+        A: MATCH (u:User)-[:SHARED]->(p:Post) WHERE toLower(p.content) CONTAINS 'covid variant' RETURN u.id, u.name, p.content, p.timestamp LIMIT 5
+
+        Q: List posts created by user john_doe this year
+        A: MATCH (u:User {{username: 'john_doe'}})-[:CREATED]->(p:Post) WHERE p.timestamp >= datetime('{date_params.get("start_of_year", "2023-01-01T00:00:00")}') RETURN p.id, p.content, p.timestamp LIMIT 5
+
+        Now, generate a Cypher query for the following user question.
+        Remember: Output only the Cypher query.
+
+        Q: {state['query']}
+        A:
+    """
 
     return {"llama_prompt": template}
-
 
 
 def call_llama_node(state: GraphState) -> dict:
@@ -235,7 +151,7 @@ def call_llama_node(state: GraphState) -> dict:
     try:
         query = call_llama(state["llama_prompt"])
         logger.debug("LLaMA node generated Cypher query.")
-        print("Constructed Query = ",query)
+        print("Constructed Query = ", query)
         return {"llama_response": query}
     except Exception as e:
         logger.error(f"Error in LLaMA node: {e}")
@@ -246,12 +162,13 @@ def execute_cypher_node(state: GraphState) -> dict:
     """Run Cypher query and fetch results."""
     try:
         results = execute_cypher(state["llama_response"])
-        print("results",results)
+        print("results", results)
         logger.debug("Executed Cypher query successfully.")
         return {"cypher_result": results}
     except Exception as e:
         logger.error(f"Error executing Cypher query: {e}")
         return {"cypher_result": f"Error executing Cypher: {str(e)}"}
+
 
 def llama_summarize_node(state: GraphState) -> dict:
     """
@@ -266,7 +183,7 @@ def llama_summarize_node(state: GraphState) -> dict:
     """
 
     raw_result = state.get("cypher_result", "")
-    
+
     # Construct prompt to summarize the DB result in a clear concise manner
     prompt_template = f"""
     summarize {raw_result} and give it in a dezcriptive way.
@@ -275,6 +192,7 @@ def llama_summarize_node(state: GraphState) -> dict:
     # Call the existing call_llama tool to get summary
     summary = call_llama(prompt_template)
     return {"summary_result": summary}
+
 
 builder = StateGraph(GraphState)
 

@@ -7,11 +7,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Social Media Query API")
 
+
 class QueryRequest(BaseModel):
     question: str
 
+
 class QueryResponse(BaseModel):
     result: str
+
 
 @app.post("/query", response_model=QueryResponse)
 def process_query(req: QueryRequest):

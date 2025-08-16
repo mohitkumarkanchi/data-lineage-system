@@ -3,6 +3,7 @@ from langgraph_workflow.agent import run_agent_query
 
 logger = logging.getLogger(__name__)
 
+
 class QueryService:
     @staticmethod
     def run_query(user_question: str) -> str:
