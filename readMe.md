@@ -196,3 +196,9 @@ LIMIT 5
 This architecture ensures that temporal and lineage-aware queries over social media graph data can be handled robustly, efficiently, and with clear user feedback.  
 For further customization or extension (e.g., new temporal expressions, new relationships), simply adjust or add prompt examples and schema nodes/relations in `stategraph.py`.
 
+UI : 
+
+<img width="1324" height="813" alt="Screenshot 2025-08-16 at 6 13 36 PM" src="https://github.com/user-attachments/assets/628c2611-e1e1-46ab-ad41-8b400e7424b2" />
+
+
+
