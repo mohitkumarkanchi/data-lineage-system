@@ -35,7 +35,7 @@ cd dataLineageSystem
 Using Conda:
 
 ```bash
-conda env create -f [environment.yml](http://_vscodecontentref_/0)
+conda env create -f environment.yml
 conda activate data_lineage_env
 ```
 
@@ -44,7 +44,7 @@ Using venv and pip:
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r [requirements.txt](http://_vscodecontentref_/1)
+pip install -r requirements.txt
 ```
 
 ###  3. Start the FastAPI Backend
