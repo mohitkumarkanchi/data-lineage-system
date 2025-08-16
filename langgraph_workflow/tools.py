@@ -3,13 +3,13 @@ import logging
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from neo4j import GraphDatabase, exceptions as neo4j_exceptions
+import re
 
 try:
     import ollama
 except ImportError:
     ollama = None  # Ollama SDK not installed
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -22,7 +22,6 @@ try:
 except neo4j_exceptions.ServiceUnavailable as e:
     logger.error(f"Failed to connect to Neo4j: {e}")
     driver = None  # Handle connection failure gracefully
-
 
 @tool
 def execute_cypher(query: str) -> str:
@@ -39,8 +38,8 @@ def execute_cypher(query: str) -> str:
         with driver.session() as session:
             result = session.run(query)
             records = [record.data() for record in result]
-        logger.debug(f"Cypher query executed: {query}")
-        return str(records)
+            logger.debug(f"Cypher query executed: {query}")
+            return str(records)
     except neo4j_exceptions.Neo4jError as e:
         logger.error(f"Cypher query failed: {e}")
         return f"Cypher query error: {str(e)}"
@@ -48,26 +47,17 @@ def execute_cypher(query: str) -> str:
         logger.error(f"Unexpected error during Cypher query execution: {e}")
         return f"Unexpected error: {str(e)}"
 
-
 def extract_cypher_query(text: str) -> str:
     """
     Extracts the Cypher query from the LLaMA output text, assuming it starts with a Cypher keyword like MATCH.
     """
-    import re
-
-    # Common Cypher keywords that can start a query
     keywords = ["MATCH", "WITH", "CREATE", "MERGE", "OPTIONAL MATCH", "UNWIND"]
-
-    # Find the earliest occurrence of one of the keywords ignoring case
-    pattern = re.compile(r"(" + "|".join(keywords) + r")", re.IGNORECASE)
+    pattern = re.compile(r"(" + "|".join(keywords) + ")", re.IGNORECASE)
     match = pattern.search(text)
     if match:
-        # Return text starting at the first matched keyword
-        return text[match.start() :].strip()
+        return text[match.start():].strip()
     else:
-        # If no keyword found, return original text (fallback)
         return text.strip()
-
 
 @tool
 def call_llama(prompt: str) -> str:
@@ -81,7 +71,7 @@ def call_llama(prompt: str) -> str:
             response = ollama.generate(model=model_name, prompt=prompt)
             output_text = response.get("response", "").strip()
             cypher_query = extract_cypher_query(output_text)
-            logger.debug(f"LLaMA model response received.")
+            logger.debug("LLaMA model response received.")
             return cypher_query
         except Exception as e:
             logger.error(f"Error calling LLaMA model: {e}")
